@@ -1,0 +1,4 @@
+Target,avg_unemployment_rate,avg_inflation_rate,avg_GDP
+Dropout,11.62,1.28,-0.15
+Enrolled,11.27,1.21,0.05
+Graduate,11.64,1.2,0.08
