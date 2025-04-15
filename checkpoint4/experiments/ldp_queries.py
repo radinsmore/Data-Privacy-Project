@@ -15,28 +15,52 @@ DATA_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'da
 df = pd.read_csv(DATA_PATH, sep=";")
 
 # For simplicity, we will simulate LDP on binary queries.
-def ldp_noisy_count(column_name, epsilon, positive_value):
+def ldp_noisy_count(column_name, epsilon, threshold=None, positive_value=None, mode="eq"):
     """
-    Apply LDP mechanism on a column with a specific string value.
-    Only records matching `positive_value` are considered as '1'.
+    Apply LDP to a binary representation of the data.
+
+    - If positive_value is specified, compare by equality.
+    - If threshold and mode are specified, compare numerically:
+        - mode="gt": value > threshold
+        - mode="lt": value < threshold
     """
-    binary_values = df[column_name].apply(lambda v: 1 if v == positive_value else 0)
-    noisy_values = binary_values.apply(lambda v: randomized_response(v, epsilon))
-    return noisy_values.sum()
+    if positive_value is not None:
+        binary = (df[column_name] == positive_value).astype(int)
+    elif threshold is not None:
+        if mode == "gt":
+            binary = (df[column_name] > threshold).astype(int)
+        elif mode == "lt":
+            binary = (df[column_name] < threshold).astype(int)
+        elif mode == "ge":
+            binary = (df[column_name] >= threshold).astype(int)
+        elif mode == "le":
+            binary = (df[column_name] <= threshold).astype(int)
+        else:
+            raise ValueError("Unsupported mode for threshold comparison")
+    else:
+        raise ValueError("Must provide either positive_value or threshold")
+
+    noisy_values = randomized_response(binary, epsilon)
+    return int(noisy_values.sum())
 
 # Define LDP queries in a similar dictionary
 ldp_queries = {
-    "dropout_count": lambda eps: ldp_noisy_count('Target', eps, 'Dropout'),
-    "debtors_count": lambda eps: ldp_noisy_count('Debtor', eps, 1),
-    "scholarship_count": lambda eps: ldp_noisy_count('Scholarship holder', eps, 1),
+    "dropout_count": lambda eps: ldp_noisy_count('Target', eps, positive_value='Dropout'),
+    "debtors_count": lambda eps: ldp_noisy_count('Debtor', eps, positive_value=1),
+    "scholarship_count": lambda eps: ldp_noisy_count('Scholarship holder', eps, positive_value=1),
     # For non-binary columns, you can use the same structure or compute truthfully (if not the focus of privacy test)
-    "age_above_25": lambda eps: int((df['Age at enrollment'] > 25).sum()),
-    "high_admission": lambda eps: int((df['Admission grade'] > 14).sum()),
-    "graduate_count": lambda eps: ldp_noisy_count('Target', eps, 'Graduate'),
-    "age_under_20": lambda eps: int((df['Age at enrollment'] < 20).sum()),
-    "low_admission": lambda eps: int((df['Admission grade'] <= 14).sum()),
-    "no_debtor_count": lambda eps: ldp_noisy_count('Debtor', eps, 0),
-    "no_scholarship_count": lambda eps: ldp_noisy_count('Scholarship holder', eps, 0),
+    "graduate_count": lambda eps: ldp_noisy_count('Target', eps, positive_value='Graduate'),
+    # "age_above_25": lambda eps: int((df['Age at enrollment'] > 25).sum()), #fix
+    # "high_admission": lambda eps: int((df['Admission grade'] > 14).sum()), #fix
+    # "age_under_20": lambda eps: ldp_noisy_count(int((df['Age at enrollment'] < 20).sum())), #fix
+    # "low_admission": lambda eps: int((df['Admission grade'] <= 14).sum()), #fix
+    "age_above_25": lambda eps: ldp_noisy_count("Age at enrollment", eps, threshold=25, mode="gt"),
+    "high_admission": lambda eps: ldp_noisy_count("Admission grade", eps, threshold=14, mode="gt"),
+    "age_under_20": lambda eps: ldp_noisy_count("Age at enrollment", eps, threshold=20, mode="lt"),
+    "low_admission": lambda eps: ldp_noisy_count("Admission grade", eps, threshold=14, mode="le"),  # update function to support 'le'
+
+    "no_debtor_count": lambda eps: ldp_noisy_count('Debtor', eps, positive_value=0),
+    "no_scholarship_count": lambda eps: ldp_noisy_count('Scholarship holder', eps, positive_value=0),
 }
 
 # True values (from central non-private aggregation)
